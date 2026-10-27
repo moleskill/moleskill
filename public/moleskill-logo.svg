@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">MoleSkill logo</title>
+  <desc id="desc">White geometric MoleSkill monogram and wordmark on a deep navy background.</desc>
+  <rect width="1024" height="1024" fill="#080B28"/>
+  <g fill="#FFFFFF">
+    <!-- Geometric M / S monogram reconstructed from the reference -->
+    <path d="M292 270 H405 L512 377 L619 270 H732 V654 H659 V348 H644 L512 480 L360 328 V400 L442 481 L512 551 L603 460 V654 H390 L459 581 L340 462 V654 H292 V270 Z"/>
+    <path d="M292 492 L366 565 L292 638 Z"/>
+  </g>
+  <text x="512" y="760" fill="#FFFFFF" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="112" font-weight="600" letter-spacing="-4">MoleSkill</text>
+</svg>

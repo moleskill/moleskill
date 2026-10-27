@@ -1,0 +1,242 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum MeetingStatus {
+  PROCESSING
+  DONE
+  ERROR
+}
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique
+  /// scrypt hash (see lib/auth-crypto.ts); null for accounts that only use Google.
+  passwordHash    String?   @map("password_hash")
+  /// Google's stable account id (`sub`); null until the person signs in with Google.
+  googleId        String?   @unique @map("google_id")
+  /// Set once the person proves they own the address (6-digit code or Google).
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
+  termsAcceptedAt DateTime? @map("terms_accepted_at") @db.Timestamptz(6)
+  termsVersion    String?   @map("terms_version")
+  lang            String    @default("ru")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  sessions        Session[]
+  @@map("users")
+}
+
+/// A login. Only the SHA-256 of the random token is stored; the token itself lives in the cookie / Bearer header.
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+enum AuthCodePurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+/// A one-time 6-digit code sent by email. Only an HMAC of the code is stored.
+model AuthCode {
+  id         String          @id @default(uuid()) @db.Uuid
+  email      String
+  purpose    AuthCodePurpose
+  codeHash   String          @map("code_hash")
+  attempts   Int             @default(0)
+  expiresAt  DateTime        @map("expires_at") @db.Timestamptz(6)
+  consumedAt DateTime?       @map("consumed_at") @db.Timestamptz(6)
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([email, purpose, createdAt(sort: Desc)])
+  @@index([expiresAt])
+  @@map("auth_codes")
+}
+
+model Meeting {
+  id               String        @id @default(uuid()) @db.Uuid
+  /// The person who uploaded it.
+  userId           String        @map("user_id") @db.Uuid
+  /// Who can see it: everything is scoped by workspace (a personal workspace exists for every user).
+  workspaceId      String        @map("workspace_id") @db.Uuid
+  title            String
+  audioPath        String        @map("audio_path")
+  status           MeetingStatus @default(PROCESSING)
+  summary          String?
+  decisions        String[]      @default([])
+  openQuestions    String[]      @default([]) @map("open_questions")
+  tags             String[]      @default([])
+  favorite         Boolean       @default(false)
+  transcript       String?
+  transcriptRu     String?       @map("transcript_ru")
+  error            String?
+  /// How many times processing has been started (the first run counts); capped by MAX_ATTEMPTS.
+  attempts         Int           @default(0)
+  /// When set, the recording was removed from Storage; the transcript and notes remain.
+  audioDeletedAt   DateTime?     @map("audio_deleted_at")
+  /// Remove the recording automatically once the notes are ready.
+  deleteAudioAfter Boolean       @default(false) @map("delete_audio_after")
+  /// Set once `transcript_segments` mirrors `transcript`; null means "not built yet" (see the maintenance job).
+  segmentsBuiltAt  DateTime?     @map("segments_built_at")
+  recordedAt       DateTime?     @map("recorded_at") @db.Timestamptz(6)
+  durationSec      Int?          @map("duration_sec")
+  language         String?
+  speakerNames     Json?         @map("speaker_names")
+  processingStage  String?       @map("processing_stage")
+  seriesId         String?       @map("series_id") @db.Uuid
+  partNo           Int?          @map("part_no")
+  partCount        Int?          @map("part_count")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @default(now()) @updatedAt @map("updated_at")
+  workspace        Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks            Task[]
+  segments         TranscriptSegment[]
+  shares           MeetingShare[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([workspaceId, seriesId, partNo])
+  @@index([status, updatedAt])
+  @@map("meetings")
+}
+
+model MeetingShare {
+  id             String    @id @default(uuid()) @db.Uuid
+  meetingId      String    @map("meeting_id") @db.Uuid
+  tokenHash      String    @unique @map("token_hash")
+  createdBy      String    @map("created_by") @db.Uuid
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(6)
+  showTranscript Boolean   @default(true) @map("show_transcript")
+  showAudio      Boolean   @default(false) @map("show_audio")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  meeting        Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, createdAt(sort: Desc)])
+  @@map("meeting_shares")
+}
+
+model Task {
+  id        String    @id @default(uuid()) @db.Uuid
+  meetingId String    @map("meeting_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  workspaceId String  @map("workspace_id") @db.Uuid
+  title     String
+  owner     String?
+  dueDate   DateTime? @map("due_date") @db.Date
+  /// The words used in the meeting about the deadline ("by the 29th").
+  dueText   String?   @map("due_text")
+  /// Parts of the deadline heard when the full date was ambiguous; the person completes them (see lib/task-dates.ts).
+  dueDay    Int?      @map("due_day")
+  dueMonth  Int?      @map("due_month")
+  dueYear   Int?      @map("due_year")
+  done      Boolean   @default(false)
+  /// Edited by hand: re-analysis never removes or rewrites it.
+  userEdited Boolean  @default(false) @map("user_edited")
+  /// Version for optimistic concurrency between devices.
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+  meeting   Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([meetingId])
+  @@index([workspaceId, dueDate])
+  @@map("tasks")
+}
+
+/// One timed line of a transcript. `speaker` is reserved for diarization.
+model TranscriptSegment {
+  id        String  @id @default(uuid()) @db.Uuid
+  meetingId String  @map("meeting_id") @db.Uuid
+  userId    String  @map("user_id") @db.Uuid
+  idx       Int
+  startSec  Float   @map("start_sec")
+  endSec    Float   @map("end_sec")
+  text      String
+  speaker   String?
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, idx])
+  @@index([userId])
+  @@map("transcript_segments")
+}
+
+/// Fixed-window request counters (see lib/rate-limit.ts).
+model RateLimit {
+  key         String
+  windowStart DateTime @map("window_start") @db.Timestamptz(6)
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+  @@map("rate_limits")
+}
+
+/// A shared space with roles. Every user also gets one personal workspace (personalOwnerId set) that cannot have members.
+model Workspace {
+  id              String            @id @default(uuid()) @db.Uuid
+  name            String
+  personalOwnerId String?           @unique @map("personal_owner_id") @db.Uuid
+  createdBy       String            @map("created_by") @db.Uuid
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @default(now()) @updatedAt @map("updated_at")
+  members         WorkspaceMember[]
+  invites         WorkspaceInvite[]
+  meetings        Meeting[]
+  tasks           Task[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String        @id @default(uuid()) @db.Uuid
+  workspaceId String        @map("workspace_id") @db.Uuid
+  userId      String        @map("user_id") @db.Uuid
+  /// Snapshot taken when the person joined, so member lists need no calls to the auth service.
+  email       String?
+  role        WorkspaceRole
+  createdAt   DateTime      @default(now()) @map("created_at")
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+/// A single-use invitation link. Only a hash of the token is stored.
+model WorkspaceInvite {
+  id          String        @id @default(uuid()) @db.Uuid
+  workspaceId String        @map("workspace_id") @db.Uuid
+  /// When set, only an account with this email can accept.
+  email       String?
+  role        WorkspaceRole
+  tokenHash   String        @unique @map("token_hash")
+  invitedBy   String        @map("invited_by") @db.Uuid
+  expiresAt   DateTime      @map("expires_at")
+  acceptedAt  DateTime?     @map("accepted_at")
+  acceptedBy  String?       @map("accepted_by") @db.Uuid
+  createdAt   DateTime      @default(now()) @map("created_at")
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("workspace_invites")
+}

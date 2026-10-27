@@ -1,0 +1,12 @@
+node_modules/
+.next/
+out/
+dist/
+generated/
+.env*
+!.env.example
+*.tsbuildinfo
+.vercel/
+
+# Windows download metadata
+*:Zone.Identifier
