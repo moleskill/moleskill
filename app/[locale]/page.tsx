@@ -36,19 +36,19 @@ export default async function Home({ params }: { params: Promise<{ locale: "ru" 
       <main>
         <section className="landing-hero">
           <div className="landing-hero-grid" aria-hidden="true" />
-          <div className="mx-auto grid max-w-7xl items-center gap-14 px-5 pb-20 pt-14 sm:px-8 sm:pt-20 lg:grid-cols-[1fr_1.05fr] lg:gap-16 lg:px-10 lg:pb-28 lg:pt-24">
-            <div className="relative z-10">
+          <div className="landing-hero-inner mx-auto grid max-w-7xl items-center gap-14 px-5 pb-20 pt-14 sm:px-8 sm:pt-20 lg:grid-cols-[1fr_1.05fr] lg:gap-16 lg:px-10 lg:pb-28 lg:pt-24">
+            <div className="landing-hero-copy relative z-10">
               <p className="hero-eyebrow"><span aria-hidden="true" />{copy.eyebrow}</p>
               <h1 className="hero-title text-balance text-[clamp(2.5rem,5.4vw,4.4rem)] font-semibold leading-[1.04] tracking-[-.045em]">{l.heroTitle}</h1>
               <p className="hero-sub mt-6 text-pretty text-base leading-7 sm:text-lg sm:leading-8">{l.heroSub}</p>
-              <div className="mt-8 flex flex-wrap items-center gap-3">
-                <NextLink href={cta} className="btn btn-primary btn-lg">{l.cta1}</NextLink>
+              <div className="hero-actions mt-8 flex flex-wrap items-center gap-3">
+                <NextLink href={cta} className="btn btn-primary btn-lg hero-primary">{l.cta1}</NextLink>
                 <Link href="/demo" className="hero-secondary">{copy.watchDemo} <span aria-hidden="true">↗</span></Link>
               </div>
               <div className="hero-trust"><span className="hero-trust-check"><Check /></span><span>{copy.trust}</span></div>
             </div>
 
-            <div id="example" className="mx-auto w-full max-w-[640px]" role="img" aria-label={l.demoLabel}>
+            <div id="example" className="hero-product-stage mx-auto w-full max-w-[640px]" role="img" aria-label={l.demoLabel}>
               <div className="result-card" aria-hidden="true">
                 <div className="result-topline"><div className="result-brand"><span className="result-mark"><LogoGlyph /></span><span>MoleSkill</span></div><span className="result-status"><i />{copy.transcriptLabel}</span></div>
                 <div className="result-meeting"><div><span className="result-kicker">{copy.minutes}</span><h2>{l.demoLabel}</h2></div><span className="result-duration">32:08</span></div>

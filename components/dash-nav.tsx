@@ -19,10 +19,10 @@ export function DashNav({ items, label }: { items: Item[]; label: string }) {
   return (
     <nav aria-label={label} className="flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface-2 p-1 lg:block lg:space-y-0.5 lg:border-0 lg:bg-transparent lg:p-0">
       {items.map((i) => {
-        const active = i.href === "/dashboard" ? path === i.href : path.startsWith(i.href);
+        const active = i.href === "/dashboard" ? path === i.href || path.startsWith("/dashboard/new") : path.startsWith(i.href);
         return (
           <Link key={i.href} href={i.href} aria-current={active ? "page" : undefined} className={`nav-link shrink-0 ${active ? "nav-link-active" : ""}`}>
-            <span className={`hidden size-5 items-center justify-center lg:flex ${active ? "text-accent" : ""}`} aria-hidden>
+            <span className={`flex size-5 shrink-0 items-center justify-center ${active ? "text-accent" : ""}`} aria-hidden>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{PATHS[i.icon]}</svg>
             </span>
             <span>{i.label}</span>

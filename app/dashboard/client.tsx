@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useId, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useTransition, type ReactNode, type RefObject } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { deleteMeeting, retryMeeting, saveTask, toggleTask } from "@/app/actions/meetings";
+import { retryMeeting, saveTask, toggleTask } from "@/app/actions/meetings";
 import { downloadText, seekAndPlay } from "@/lib/audio-client";
 import { parseTranscript, toSrt } from "@/lib/transcript";
 import { formatDate } from "@/lib/format-date";
@@ -196,16 +196,6 @@ function ReviewDue({ task, labels, locale, onSave, onCancel }: { task: TaskDto; 
   );
 }
 
-export function DeleteButton({ id, label, pendingLabel, confirmText }: { id: string; label: string; pendingLabel: string; confirmText: string }) {
-  const [pending, start] = useTransition();
-  return (
-    <button type="button" disabled={pending} className="text-sm text-muted transition-colors hover:text-danger disabled:opacity-60"
-      onClick={() => { if (confirm(confirmText)) start(async () => { await deleteMeeting(id); }); }}>
-      {pending ? pendingLabel : label}
-    </button>
-  );
-}
-
 export function RetryButton({ id, label }: { id: string; label: string }) {
   const [pending, start] = useTransition();
   return (
@@ -338,7 +328,7 @@ export function TranslateMinutes({ content, t }: { content: string; t: T }) {
   </div>;
 }
 
-export function TranscriptPlayer({ id, transcript, translatedTranscript: initialTranslation, audioUrl, t }: { id: string; transcript: string; translatedTranscript?: string | null; audioUrl?: string | null; t: T }) {
+export function TranscriptPlayer({ id, transcript, translatedTranscript: initialTranslation, audioUrl, audioRef: externalAudioRef, showAudio = true, t }: { id: string; transcript: string; translatedTranscript?: string | null; audioUrl?: string | null; audioRef?: RefObject<HTMLAudioElement | null>; showAudio?: boolean; t: T }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(transcript);
@@ -349,7 +339,8 @@ export function TranscriptPlayer({ id, transcript, translatedTranscript: initial
   const [showTranslation, setShowTranslation] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [translationError, setTranslationError] = useState("");
-  const audio = useRef<HTMLAudioElement | null>(null);
+  const internalAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audio = externalAudioRef ?? internalAudioRef;
   const displayedTranscript = showTranslation && translatedTranscript ? translatedTranscript : transcript;
   const lines = useMemo(() => parseTranscript(displayedTranscript), [displayedTranscript]);
   const hasTimes = lines.some((line) => line.time !== null);
@@ -404,7 +395,7 @@ export function TranscriptPlayer({ id, transcript, translatedTranscript: initial
           {saveError && <p role="alert" className="text-xs text-danger">{saveError}</p>}
         </div>
       )}
-      {audioUrl && (
+      {audioUrl && showAudio && (
         <div className="rounded-xl border border-line p-3">
           <p className="mb-2 text-xs font-medium text-muted">{t.audioPlayback}</p>
           <audio ref={audio} controls preload="none" src={audioUrl} className="w-full" />

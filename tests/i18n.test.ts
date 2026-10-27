@@ -14,7 +14,7 @@ function allSources() {
     "app/[locale]/page.tsx", "app/[locale]/demo/page.tsx", "app/[locale]/terms/page.tsx", "app/[locale]/donate/page.tsx", "app/[locale]/finances/page.tsx",
     "app/dashboard/page.tsx", "app/dashboard/layout.tsx", "app/dashboard/ask/page.tsx", "app/dashboard/ask/ask-form.tsx", "app/dashboard/tasks/page.tsx", "app/dashboard/calendar/page.tsx", "app/dashboard/workspace/page.tsx",
     "app/(auth)/layout.tsx", "app/(auth)/invite/[token]/page.tsx", "app/(auth)/login/page.tsx", "app/(auth)/register/page.tsx",
-    "app/dashboard/client.tsx", "app/dashboard/upload.tsx", "app/dashboard/workspace/panel.tsx", "app/dashboard/meetings/page.tsx", "app/dashboard/meetings/[id]/page.tsx", "app/dashboard/meetings/[id]/detail-client.tsx", "app/dashboard/meetings/[id]/error.tsx", "app/dashboard/meetings/[id]/not-found.tsx", "app/s/[token]/page.tsx", "components/site-header.tsx", "lib/task-labels.ts", "lib/use-recorder.ts",
+    "app/dashboard/client.tsx", "app/dashboard/upload.tsx", "app/dashboard/meeting-list.tsx", "app/dashboard/workspace/panel.tsx", "app/dashboard/meetings/page.tsx", "app/dashboard/meetings/[id]/page.tsx", "app/dashboard/meetings/[id]/detail-client.tsx", "app/dashboard/meetings/[id]/error.tsx", "app/dashboard/meetings/[id]/not-found.tsx", "app/s/[token]/page.tsx", "components/site-header.tsx", "lib/task-labels.ts", "lib/use-recorder.ts",
   ].map((file) => readFileSync(resolve(process.cwd(), file), "utf8")).join("\n");
 }
 

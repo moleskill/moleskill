@@ -6,7 +6,7 @@ import { clearDraft } from "@/lib/recorder-draft";
 import { recoverRecorderDraft, useRecorder } from "@/lib/use-recorder";
 import { ConfirmSheet } from "@/components/ui/sheet";
 import { LiveWave } from "@/components/ui/live-wave";
-import { failedPartIndexes, partRecordedAt } from "@/lib/recorder-parts";
+import { partRecordedAt } from "@/lib/recorder-parts";
 import { formatDateTime } from "@/lib/format-date";
 import { intlLocale } from "@/lib/locale";
 import { displayTitle } from "@/lib/display-title";
@@ -120,6 +120,7 @@ export function Upload({ t, lang = "ru", timeZone = "UTC" }: { t: Record<string,
   const [uploadedParts, setUploadedParts] = useState<boolean[]>([]);
   const [partProgress, setPartProgress] = useState<number[]>([]);
   const [reviewSeconds, setReviewSeconds] = useState<number | null>(null);
+  const [recordPromptOpen, setRecordPromptOpen] = useState(false);
   useEffect(() => { void recoverRecorderDraft().then((draft) => { if (draft) setRecovery(draft); }); }, []);
   useEffect(() => {
     if (!files.length) return;
@@ -153,7 +154,7 @@ export function Upload({ t, lang = "ru", timeZone = "UTC" }: { t: Record<string,
     cancelCapture(true);
     setFiles([]); setTitle("");
   }, [secs, cancelCapture, setFiles]);
-  function discardRecording() { setCancelOpen(false); recorder.cancel(false); setFiles([]); setTitle(""); }
+  function discardRecording() { setCancelOpen(false); recorder.cancel(false); setFiles([]); setTitle(""); router.replace("/dashboard"); }
   function resetFile() { recorder.resetReview(); setTitle(""); setWarning(""); setErr(""); setConfirmShort(false); void clearDraft(); }
 
   useEffect(() => {
@@ -186,14 +187,15 @@ export function Upload({ t, lang = "ru", timeZone = "UTC" }: { t: Record<string,
       const initialized: (PreparedPart | undefined)[] = [...preparedParts];
       const done = [...uploadedParts];
       const progress = [...partProgress];
-      const retryIndexes = new Set(failedPartIndexes(done.map((complete) => complete ? "done" : "pending")));
       for (let i = 0; i < files.length; i += 1) {
-        if (!retryIndexes.has(i)) continue;
         const partFile = files[i];
         if (!partFile) continue;
         if (!initialized[i]) {
           const init = await postJson("/api/uploads", { filename: partFile.name, contentType: partFile.type, size: partFile.size });
           initialized[i] = { path: String(init.path), uploadUrl: String(init.uploadUrl) };
+          // A completed flag without its corresponding path cannot be used to finalize the upload.
+          // Issue a fresh storage path and upload this part again in that case.
+          done[i] = false;
           setPreparedParts([...initialized]);
         }
         if (done[i]) continue;
@@ -219,16 +221,16 @@ export function Upload({ t, lang = "ru", timeZone = "UTC" }: { t: Record<string,
         const durationSec = Math.min(86400, Math.max(0, Math.round(effectiveDurations[index] ?? 0)));
         const recordedAt = partRecordedAt(firstTime, effectiveDurations.slice(0, index).map((duration) => Math.round(duration)))?.toISOString();
         const target = initialized[index];
+        if (!target?.path) throw new UploadError("upload_failed");
         return { path: target?.path, recordedAt, durationSec, partNo: index + 1, partCount: files.length };
       });
       await postJson("/api/uploads/complete", files.length > 1
         ? { title, deleteAudio, seriesId, parts: partMetadata }
         : { path: partMetadata[0]?.path, title, deleteAudio, recordedAt: partMetadata[0]?.recordedAt, durationSec: partMetadata[0]?.durationSec });
-      void clearDraft();
-      recorder.processing();
+      recorder.uploadDone();
       setRecovery(null); setFiles([]); setTitle(""); setWarning(""); setConfirmShort(false);
       setPreparedParts([]); setUploadedParts([]); setPartProgress([]);
-      router.refresh();
+      router.replace("/dashboard");
     } catch (error) {
       const message = error instanceof UploadError ? friendlyUploadError(error.code, t) : t.errNetwork;
       recorder.uploadFailed(message);
@@ -243,7 +245,8 @@ export function Upload({ t, lang = "ru", timeZone = "UTC" }: { t: Record<string,
   const mmss = `${String(Math.floor(shownSeconds / 60)).padStart(2, "0")}:${String(Math.floor(shownSeconds % 60)).padStart(2, "0")}`;
 
   return (
-    <form onSubmit={submit} className="recorder-card dashboard-recorder card relative overflow-hidden p-5 sm:p-7">
+    <section className="new-meeting-section">
+      <form onSubmit={submit} className="new-meeting-form recorder-card dashboard-recorder card relative">
       <div className="relative">
         {recovery && !file && !rec && (
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[.06] p-3 text-sm">
@@ -254,41 +257,44 @@ export function Upload({ t, lang = "ru", timeZone = "UTC" }: { t: Record<string,
             </div>
           </div>
         )}
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-start gap-3.5">
-            <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-accent/10 text-accent">
-              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="9" y="2" width="6" height="13" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" /></svg>
-            </span>
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight">{t.newMeeting}</h2>
-              <p className="mt-1 max-w-lg text-sm leading-6 text-muted">{t.recorderSub}</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {rec && <button type="button" onClick={recorder.pauseResume} className="btn btn-ghost h-10">{paused ? t.recResume : t.recPause}</button>}
-            {rec && <button type="button" onClick={cancelRecording} className="btn btn-ghost min-h-11">{t.recCancel}</button>}
-            {rec && recorderState.parts > 1 && <span className="inline-flex min-h-9 items-center rounded-full border border-line px-3 text-xs text-muted">{t.recPartLabel} {recorderState.parts}</span>}
-            <button type="button" disabled={busy || recorderState.phase === "requesting"} onClick={() => { if (rec) recorder.stop(); else { if (!title) setTitle(displayTitle("", new Date(), lang, timeZone)); void recorder.start(); } }} className="btn btn-primary min-h-11">
-              {rec && <span className={`size-2 rounded-full bg-current ${paused ? "" : "motion-safe:animate-pulse"}`} aria-hidden />}
-              {rec ? `${t.recStop} · ${mmss}` : recorderState.phase === "requesting" ? t.sending : t.dashRecordMeeting}
-            </button>
-            {!file && !captureBusy && <button type="button" className="btn btn-ghost min-h-11" onClick={() => fileInput.current?.click()}>{t.dashUploadFile}</button>}
+        <div className="new-meeting-intro">
+          <div>
+            <h1 className="page-title">{t.newMeeting}</h1>
+            <p className="page-subtitle">{t.recorderSub}</p>
           </div>
         </div>
 
-        {rec && (
-          <div className="mt-5 rounded-xl border border-line/80 bg-bg/55 p-4" role="group" aria-label={t.recordingLevel} aria-live="polite" aria-atomic="false">
-            <div className="flex items-center justify-between gap-3 text-xs text-muted">
-              <span>{t.recordingLevel}</span>
-              <span>{paused ? t.recPaused : t.levelGood}</span>
+        {!file && <section className={`new-meeting-record-panel ${rec ? "is-recording" : ""}`} aria-label={t.newMeetingRecordHeading}>
+          <div className="new-meeting-record-copy">
+            <span className="new-meeting-record-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>
+            </span>
+            <div>
+              <h2>{rec ? (paused ? t.recPaused : t.levelGood) : t.newMeetingRecordHeading}</h2>
+              <p>{rec ? `${t.recordingLevel} · ${mmss}` : t.newMeetingRecordHint}</p>
             </div>
-            <LiveWave analyser={recorder.analyser} paused={paused} label={t.recordingLevel} />
           </div>
-        )}
+          <div className="new-meeting-record-actions">
+            {rec ? <>
+              {recorderState.parts > 1 && <span className="new-meeting-part-count">{t.recPartLabel} {recorderState.parts}</span>}
+              <button type="button" onClick={recorder.pauseResume} className="btn btn-ghost min-h-11">{paused ? t.recResume : t.recPause}</button>
+              <button type="button" onClick={cancelRecording} className="btn btn-ghost min-h-11">{t.recCancel}</button>
+              <button type="button" onClick={recorder.stop} className="btn btn-primary min-h-11">{t.recStop} · {mmss}</button>
+            </> : <button type="button" disabled={busy || recorderState.phase === "requesting"} onClick={() => setRecordPromptOpen(true)} className="btn btn-primary new-meeting-start-button">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>
+              {recorderState.phase === "requesting" ? t.sending : t.dashRecordMeeting}
+            </button>}
+          </div>
+          {rec && <div className="new-meeting-wave" role="group" aria-label={t.recordingLevel} aria-live="polite" aria-atomic="false">
+            <div className="new-meeting-wave-label"><span>{t.recordingLevel}</span><span>{paused ? t.recPaused : t.levelGood}</span></div>
+            <LiveWave analyser={recorder.analyser} paused={paused} label={t.recordingLevel} />
+          </div>}
+        </section>}
         {recorderState.phase === "permission_denied" && <div role="alert" className="mt-4 rounded-xl border border-danger/20 bg-danger/[.06] p-4 text-sm"><p className="font-semibold text-danger">{t.recPermissionDenied}</p><p className="mt-1 text-muted">{t.recPermissionHelp}</p><button type="button" className="btn btn-ghost mt-2 min-h-11" onClick={recorder.start}>{t.recRetryMic}</button></div>}
         {recorderState.phase === "error" && recorderState.error && <p role="alert" className="mt-3 text-sm text-danger">{recorderState.error}</p>}
         {recorderState.phase === "processing" && <p role="status" aria-live="polite" className="mt-3 text-sm text-muted">{t.analyzing}</p>}
 
+        <h2 className="new-meeting-upload-heading">{t.newMeetingUploadHeading}</h2>
         <label
           onDragOver={(e) => { e.preventDefault(); if (!busy && !rec) setOver(true); }}
           onDragLeave={() => setOver(false)}
@@ -308,7 +314,7 @@ export function Upload({ t, lang = "ru", timeZone = "UTC" }: { t: Record<string,
             {busy && (
               <div role="status">
                 <div className="h-1.5 overflow-hidden rounded-full bg-line"><div className="h-full bg-accent transition-[width]" style={{ width: `${pct}%` }} /></div>
-                <p className="mt-2 text-sm text-muted">{pct === 100 ? t.analyzing : `${t.sending} ${pct}%`}</p>
+                <p className="mt-2 text-sm text-muted">{pct === 100 ? t.finalizing : `${t.sending} ${pct}%`}</p>
                 {files.length > 1 && <ul className="mt-2 space-y-1 text-xs text-muted">{files.map((part, index) => <li key={`${part.name}-${index}`}>{t.recPartLabel} {index + 1}: {uploadedParts[index] ? partProgress[index] ?? 100 : partProgress[index] ?? 0}%</li>)}</ul>}
               </div>
             )}
@@ -326,7 +332,9 @@ export function Upload({ t, lang = "ru", timeZone = "UTC" }: { t: Record<string,
         {warning && <p role="status" className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/[.06] px-3.5 py-3 text-sm text-muted">{warning}</p>}
         {err && <p role="alert" className="mt-3 rounded-xl border border-danger/20 bg-danger/[.06] px-3.5 py-3 text-sm text-danger">{err}</p>}
         <ConfirmSheet open={cancelOpen} onClose={() => setCancelOpen(false)} title={t.recCancelTitle.replace("{duration}", mmss)} closeLabel={t.recCancel} cancelLabel={t.recContinue} confirmLabel={t.recDelete} onConfirm={discardRecording}>{t.recCancelBody}</ConfirmSheet>
+        <ConfirmSheet open={recordPromptOpen} onClose={() => setRecordPromptOpen(false)} title={t.recordPrepTitle} closeLabel={t.mdCancel} cancelLabel={t.mdCancel} confirmLabel={t.recordPrepConfirm} onConfirm={() => { setRecordPromptOpen(false); if (!title) setTitle(displayTitle("", new Date(), lang, timeZone)); void recorder.start(); }}>{t.recordPrepBody}</ConfirmSheet>
       </div>
-    </form>
+      </form>
+    </section>
   );
 }
